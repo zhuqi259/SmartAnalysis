@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<head>
+    <meta charset="utf-8">
+    <title>用电分析 - 实时功率采集</title>
+    <link rel="stylesheet" type="text/css" href="../lib/jquery-easyui/1.4.4/demo/demo.css">
+</head>
+<body>
+
+<h2>用电分析 - 实时功率采集</h2>
+<h3><a href="./meter.html">切换至电量数据分析</a></h3>
+
+<!-- 为ECharts准备一个具备大小（宽高）的Dom -->
+<div id="main" style="height:400px;"></div>
+<!-- ECharts单文件引入 -->
+<script src="../js/echarts-all.js"></script>
+<script type="text/javascript" src="../js/jquery.js"></script>
+<script type="text/javascript">
+        // 基于准备好的dom，初始化echarts图表
+       $(document).ready(function () {
+
+        // 绘制反馈量图形
+        var init_echarts = function () {
+            var refreshChart = function (show_data) {
+                my_demo_chart = echarts.init(document.getElementById('main'));
+                my_demo_chart.showLoading({
+                    text: '加载中...',
+                    effect: 'whirling'
+                });
+
+                var echarts_all_option = {
+                    title: {
+                        text: '用电分析',
+                        subtext: '实时功率采集'
+                    },
+                    tooltip: {
+                        trigger: 'axis',
+                        formatter: "时间 {b}<br/>{a}: {c}kW"
+                    },
+                    legend: {
+                        data: ['实时功率']
+                    },
+                    toolbox: {
+                        show: true,
+                        feature: {
+                            mark: {show: true},
+                            dataView: {show: true, readOnly: false},
+                            magicType: {show: true, type: ['line']},
+                            restore: {show: true},
+                            saveAsImage: {show: true}
+                        }
+                    },
+                    dataZoom: {
+                        show: false,
+                        start: 0,
+                        end: 100
+                    },
+                    xAxis: [
+                        {
+                            type: 'category',
+                            name: '时间',
+                            data: (function () {
+                                var res = [];
+                                var len = show_data.length-1;
+                                while (len>=0) {
+                                    res.unshift(show_data[len].time.substring(11));
+                                    len--;
+                                }
+                                return res;
+                            })()
+                        }
+                    ],
+                    yAxis: [
+                        {
+                            type: 'value',
+                            scale: true,
+                            axisLabel: {
+                                formatter: '{value} kW'
+                            }
+                        }
+                    ],
+                    series: [
+                        {
+                            name: '实时功率',
+                            type: 'line',
+                            // 获取到数据库的数据
+                            data: (function(){
+                                var res = [];
+                                var len = show_data.length-1;
+                                while(len>=0){
+                                    res.unshift(parseFloat(show_data[len].num));
+                                    len--;
+                                }
+                                return res;
+                            })()
+                        }
+                    ]
+                };
+
+                my_demo_chart.hideLoading();
+                my_demo_chart.setOption(echarts_all_option);
+            };
+
+            // 获取原始数据
+            $.ajax({
+                type:'get',
+                url: "../power/list",
+                dataType:'json',
+                success: function (data) {
+                    // 根据数据库取到结果拼接现在结果
+                    refreshChart(data);
+                }
+            });
+        };
+
+        var timeTicket;
+        var lastData = 0;
+        var axisData;
+        timeTicket = setInterval(function () {
+            // 获取实时更新数据
+            $.ajax({
+                type:'get',
+                url: "../power/list",
+                dataType:'json',
+                success: function (data) {
+                    var len = data.length-1;
+                    // 根据条件转换成相应的api 转化为echart 需要的数据
+                    lastData = parseFloat(data[len].num);
+
+                    // 动态数据接口 addData
+                    my_demo_chart.addData([
+                        [
+                            0,        // 系列索引
+                            lastData, // 新增数据
+                            false,     // 新增数据是否从队列头部插入
+                            false,     // 是否增加队列长度，false则自定删除原有数据，队头插入删队尾，队尾插入删队头
+                            data[len].time.substring(11)
+                        ]
+                    ]);
+                }
+            });
+        }, 45000); // 45s
+
+        // 默认加载
+        var default_load = (function () {
+            init_echarts();
+        })();
+    });
+
+</script>
+</body>

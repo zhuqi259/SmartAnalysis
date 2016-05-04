@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>用电分析 - 电量数据分析</title>
+    <link rel="stylesheet" type="text/css" href="../lib/jquery-easyui/1.4.4/themes/default/easyui.css">
+    <link rel="stylesheet" type="text/css" href="../lib/jquery-easyui/1.4.4/themes/icon.css">
+    <link rel="stylesheet" type="text/css" href="../lib/jquery-easyui/1.4.4/demo/demo.css">
+    <script type="text/javascript" src="../lib/jquery-easyui/1.4.4/jquery.min.js"></script>
+    <script type="text/javascript" src="../lib/jquery-easyui/1.4.4/jquery.easyui.min.js"></script>
+    <script src="../js/echarts-all.js"></script>
+
+    <script type="text/javascript">
+        function myformatter(date){
+            var y = date.getFullYear();
+            var m = date.getMonth()+1;
+            var d = date.getDate();
+            return y+'-'+(m<10?('0'+m):m)+'-'+(d<10?('0'+d):d);
+        }
+        function myparser(s){
+            if (!s) return new Date();
+            var ss = (s.split('-'));
+            var y = parseInt(ss[0],10);
+            var m = parseInt(ss[1],10);
+            var d = parseInt(ss[2],10);
+            if (!isNaN(y) && !isNaN(m) && !isNaN(d)){
+                return new Date(y,m-1,d);
+            } else {
+                return new Date();
+            }
+        }
+
+
+    </script>
+</head>
+<body>
+<h2>用电分析 - 电量数据分析</h2>
+<h3>当前电表读数: <span id="meter"></span>kWh&nbsp;&nbsp;&nbsp;<a href="./power.html">切换至实时功率采集</a></h3>
+<div style="margin:20px 0;"></div>
+统计级别: <select class="easyui-combobox" name="step" style="width:60px;" id="step">
+    <option value="0">小时</option>
+    <option value="1">日</option>
+    <option value="2">周</option>
+    <option value="3">月</option>
+    <option value="4">年</option>
+</select>
+&nbsp;&nbsp;&nbsp;&nbsp;开始时间:
+<input class="easyui-datebox" required style="width:100px"
+       data-options="formatter:myformatter,parser:myparser" id="begin">
+&nbsp;&nbsp;&nbsp;&nbsp;结束时间:
+<input class="easyui-datebox" required style="width:100px"
+       data-options="formatter:myformatter,parser:myparser" id="end">&nbsp;&nbsp;&nbsp;&nbsp;<a
+        id="btn-analysis"
+        href="#"
+        class="easyui-linkbutton"
+        data-options="iconCls:'icon-search'"
+        style="width:60px">统计</a>
+<div id="split" style="height:50px;"></div>
+<!-- 为ECharts准备一个具备大小（宽高）的Dom -->
+<div id="main" style="height:400px;"></div>
+
+<script type="text/javascript">
+        // 基于准备好的dom，初始化echarts图表
+      $(document).ready(function() {
+            var refreshChart = function (show_data, step) {
+                var my_demo_chart = echarts.init(document.getElementById('main'));
+                my_demo_chart.showLoading({
+                    text: '加载中...',
+                    effect: 'whirling'
+                });
+                var option = {
+                    title: {
+                        text: '用电分析',
+                        subtext: '电量数据采集'
+                    },
+                    tooltip: {
+                        trigger: 'axis',
+                        formatter: "{b}<br/>{a}: {c}kWh"
+                    },
+                    legend: {
+                        data: ['电量']
+                    },
+                    toolbox: {
+                        show: true,
+                        feature: {
+                            mark: {
+                                show: true
+                            },
+                            dataView: {
+                                show: true,
+                                readOnly: false
+                            },
+                            magicType: {
+                                show: true,
+                                type: ['line', 'bar']
+                            },
+                            restore: {
+                                show: true
+                            },
+                            saveAsImage: {
+                                show: true
+                            }
+                        }
+                    },
+                    dataZoom: {
+                        show: false,
+                        start: 0,
+                        end: 100
+                    },
+                    xAxis: [{
+                        type: 'category',
+                        name: '时间',
+                        data: (function () {
+                                var res = [];
+                                var len = show_data.length-1;
+                                while (len>=0) {
+                                    if(step==0){
+                                        res.unshift(show_data[len].time);
+                                    }else if(step==3){
+                                        res.unshift(show_data[len].time.substring(0, 7));
+                                    }else if(step==4){
+                                        res.unshift(show_data[len].time.substring(0, 4));
+                                    }else{
+                                        res.unshift(show_data[len].time.substring(0, 10));
+                                    }
+                                    len--;
+                                }
+                                return res;
+                        })()
+                    }],
+                    yAxis: [{
+                        type: 'value',
+                        scale: true,
+                        axisLabel: {
+                            formatter: '{value} kWh'
+                        }
+                    }],
+                    series: [{
+                        name: '电量',
+                        type: 'bar',
+                         // 获取到数据库的数据
+                        data: (function(){
+                            var res = [];
+                            var len = show_data.length - 1;
+                            while(len>=0){
+                                res.unshift(parseFloat(show_data[len].num));
+                                len--;
+                            }
+                            return res;
+                        })()
+                    }]
+                };
+                my_demo_chart.hideLoading();
+                my_demo_chart.setOption(option);
+            };
+
+            $("#btn-analysis").click(function(){
+                var step = $("#step").combobox('getValue');
+                var begin = $("#begin").datebox('getValue');
+                var end = $("#end").datebox('getValue');
+
+                // 获取原始数据
+                $.ajax({
+                    type:'get',
+                    url: "../meter",
+                    data: {'step':step, 'begin': begin + " 00:00:00", 'end': end+ " 00:00:00"},
+                    dataType:'json',
+                    success: function (data) {
+                        // 根据数据库取到结果拼接现在结果
+                        refreshChart(data, step);
+                    }
+                });
+            });
+
+            // 获取当前电表读数 (最接近)
+            $.ajax({
+                type:'get',
+                url: "../meter/single",
+                dataType:'json',
+                success: function (data) {
+                    if(data.length == 1){
+                        $("#meter").text(data[0].num)
+                    }else{
+                        $("#meter").text("【未知】")
+                    }
+                }
+            });
+      });
+
+
+</script>
+</body>
+</html>
